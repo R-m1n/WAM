@@ -1,4 +1,4 @@
-# WAM
+# Keep WAMing
 
 <p>&nbsp</p>
 <div align="center">
