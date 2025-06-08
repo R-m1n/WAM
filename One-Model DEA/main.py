@@ -93,35 +93,25 @@ layout = html.Div([
         type="graph",
         fullscreen=True,
         children=html.Div([
-            html.Div(
-                id="initial-loading", 
-                style={
-                    "position": "fixed",
-                    "top": 0,
-                    "left": 0,
-                    "width": "100%",
-                    "height": "100%",
-                    "backgroundColor": "rgba(0, 0, 0, 0)",
-                    "color": "white",
-                    "fontSize": "32px",
-                    "display": "flex",
-                    "justifyContent": "center",
-                    "alignItems": "center",
-                    "zIndex": 9999
-                },
-            ),
+            html.Div(id="initial-loading"),
 
-            dcc.Interval(id="hide-loader", interval=3000, n_intervals=0, max_intervals=1),
+            dcc.Interval(
+                id="hide-loader", 
+                interval=3000, 
+                n_intervals=0, 
+                max_intervals=1,
+            ),
         ]),
     ),
 
-    html.H1("One-Model DEA Input Congestion Dashboard", 
-            style={
-                "textAlign": "center",
-                "fontFamily": FONT,
-            },
-            className="fancy-header",
-        ),
+    html.H1(
+        "One-Model DEA Input Congestion Dashboard", 
+        style={
+            "textAlign": "center",
+            "fontFamily": FONT,
+        },
+        className="fancy-header",
+    ),
 
     html.Div([
         html.H3(
@@ -496,12 +486,10 @@ app.layout = layout
     Input("hide-loader", "n_intervals")
 )
 def hide_loader(n):
-    if n > 0:
-        return {
-            "display": "none"
-        }
+    if n == 0:
+        time.sleep(3)
+        return {"display": "none"}
     
-    time.sleep(3)
     raise dash.exceptions.PreventUpdate
 
 
@@ -916,7 +904,13 @@ def generate_pdf_report(
         doc.build(story)
         buffer.seek(0)
 
-        return dcc.send_bytes(buffer.read(), filename="dea_report.pdf"), SUCCESS
+        return (
+            dcc.send_bytes(
+                buffer.read(), 
+                filename="dea_report.pdf"
+            ), 
+            SUCCESS,
+        )
     
     except Exception as e:
         return dash.no_update, FAIL + f" {e}"
@@ -931,13 +925,15 @@ def table_to_reportlab(data):
 
     tbl = Table(table_data, repeatRows=1)
 
-    tbl.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-    ]))
+    tbl.setStyle(
+        TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ])
+    )
 
     return tbl
 
