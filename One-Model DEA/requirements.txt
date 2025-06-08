@@ -1,0 +1,8 @@
+numpy
+pandas
+cvxpy
+dash
+plotly
+scikit-learn
+reportlab
+kaleido
