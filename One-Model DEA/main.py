@@ -1,14 +1,14 @@
 import io
 import base64
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pathlib import Path
 
 import dash
 from dash import (
     Dash, 
-    dcc, 
+    dcc,
     html, 
     dash_table, 
     Input, 
@@ -37,9 +37,10 @@ from reportlab.lib.pagesizes import A3
 from reportlab.lib import colors
 
 
-file_path = Path.absolute(Path("input_data.xlsx"))
+script_dir = Path(__file__).resolve().parent
+input_path = script_dir / "input_data.xlsx"
 
-initial_df = pd.read_excel(file_path)
+initial_df = pd.read_excel(input_path)
 
 
 DARKBLUE = "#1c2b4d"
@@ -48,6 +49,9 @@ GREY = "#dbdada"
 GREEN_HIGHLIGHT = "#e0ffe0"
 YELLOW_HIGHLIGHT = "#fdffe0"
 RED_HIGHLIGHT = "#ffe0e0"
+
+SUCCESS = "✅"
+FAIL = "❌"
 
 SEQ_COLORS = px.colors.sequential.Turbo
 
@@ -83,16 +87,7 @@ row_highlight_conditionals = [
     },
 ]
 
-
-app = Dash(
-    __name__,
-    assets_folder="assets",
-    external_stylesheets=[],
-)
-
-app.title = "One-Model DEA Input Congestion Dashboard"
-
-app.layout = html.Div([
+layout = html.Div([
     html.H1("One-Model DEA Input Congestion Dashboard", 
             style={
                 "textAlign": "center",
@@ -165,11 +160,7 @@ app.layout = html.Div([
                     n_clicks=0, 
                     className="custom-button",
                 )
-            ], 
-            style={
-                "display": "inline-block", 
-                "marginRight": "10px",
-            },
+            ],
             ),
             html.Div([
                 dcc.Upload(
@@ -181,11 +172,7 @@ app.layout = html.Div([
                     accept=".xlsx",
                     multiple=False,
                 )
-            ], 
-            style={
-                "display": "inline-block", 
-                "marginRight": "10px",
-            },
+            ],
             ),
             html.Div([
                 html.Button(
@@ -194,16 +181,25 @@ app.layout = html.Div([
                     className="custom-button",
                 ),
                 dcc.Download(id="excel-input-download")
-            ], 
+            ],
+            ),
+            html.Div([
+                dcc.Loading(
+                    type="default",
+                    children=html.Div(id="dea-status"),
+                    className="custom-spinner",
+                ),
+            ],
             style={
-                "display": "inline-block"
+                "minWidth": "80px",
             },
-            )
+            ),
         ], 
         style={
-            "marginTop": "20px", 
-            "marginBottom": "20px", 
-            "marginLeft": "20px"
+            "display": "flex",
+            "margin": "20px",
+            "gap": "20px",
+            "alignItems": "center",
         },
     ),
     ],
@@ -403,30 +399,44 @@ app.layout = html.Div([
     ),
 
     html.Div([
-        html.Button(
-            "📥 Export Excel", 
-            id="download-excel-btn", 
-            style={
-                "marginBottom": "100px", 
-                "marginLeft": "20px", 
-            },
-            className="custom-button",
+        html.Div([
+            html.Button(
+                "📥 Export Excel", 
+                id="download-excel-btn", 
+                className="custom-button",
+            ),
+            dcc.Download(id="excel-download"),
+        ],
         ),
-        dcc.Download(id="excel-download"),
 
-        html.Button(
-            "📋 Download Report", 
-            id="download-report-btn", 
-            style={
-                "marginBottom": "100px", 
-                "marginLeft": "20px", 
-            },
-            className="custom-button",
+        html.Div([
+            html.Button(
+                "📋 Download Report", 
+                id="download-report-btn", 
+                className="custom-button",
+            ),
+            dcc.Download(id="report-download"),
+        ],
         ),
-        dcc.Download(id="report-download"),
+
+        html.Div([
+            dcc.Loading(
+                type="default",
+                children=html.Div(id="progress-status"),
+                className="custom-spinner",
+            ),
+        ],
+        style={
+            "minWidth": "80px",
+        },
+        ),
     ], 
     style={
+        "display": "flex",
         "marginTop": "20px",
+        "marginBottom": "100px",
+        "gap": "20px",
+        "alignItems": "center",
     },
     ),
 
@@ -442,104 +452,127 @@ style={
 )
 
 
+assets_dir = script_dir / "assets"
+
+app = Dash(
+    __name__,
+    assets_folder=assets_dir,
+)
+
+app.title = "One-Model DEA Input Congestion Dashboard"
+
+app.layout = layout
+
+
 @app.callback(
     Output("results-table", "columns"),
     Output("results-table", "data"),
     Output("dea-data", "data"),
+    Output("dea-status", "children"),
     Input("run-dea", "n_clicks"),
     Input("order-option", "value"),
     State("input-table", "data"),
 )
-def run_dea(_, order, table_data):
-    df = pd.DataFrame(table_data)
-    X = df[["Faculty"]].T.values
-    Y = df[["Citation", "Paper"]].T.values
+def run_dea(n_clicks, order, table_data):
+    try:
+        df = pd.DataFrame(table_data)
+        X = df[["Faculty"]].T.values
+        Y = df[["Citation", "Paper"]].T.values
 
-    results = []
-    for i in range(X.shape[1]):
-        res = dea_one_model(X, Y, i)
-        results.append(
+        results = []
+        for i in range(X.shape[1]):
+            res = dea_one_model(X, Y, i)
+            results.append(
+                {
+                    "University": df.loc[i, "University"],
+                    "phi": res["phi"],
+                    "Congestion": res["s_c"][0],
+                    "Extra Faculty Needed": res["s_plus_i2"][0],
+                    "Citation Slack": res["s_plus_r"][0],
+                    "Paper Slack": res["s_plus_r"][1],
+                }
+            )
+
+        result_df = pd.DataFrame(results)
+
+        result_df["phi"] = (
+            result_df["phi"]
+                .astype(np.float64)
+        )
+
+        result_df["Congestion"] = (
+            result_df["Congestion"]
+                .astype(np.int32)
+        )
+
+        result_df["Extra Faculty Needed"] = (
+            result_df["Extra Faculty Needed"]
+                .astype(np.int32)
+        )
+
+        result_df["Citation Slack"] = (
+            result_df["Citation Slack"]
+                .astype(np.float64)
+                .round(2)
+        )
+
+        result_df["Paper Slack"] = (
+            result_df["Paper Slack"]
+                .astype(np.float64)
+                .round(2)
+        )
+
+        result_df["phi"] = (result_df["phi"].max() - result_df["phi"] + 1)
+        
+        result_df["phi"] = (
+            MinMaxScaler().fit_transform(
+                result_df[["phi"]].to_numpy()
+            )
+        )
+        
+        result_df["phi"] = result_df["phi"].round(2)
+
+        result_df.rename(
+            columns={
+                "phi": "Efficiency Score"
+            }, 
+            inplace=True,
+        )
+
+        result_df.index += 1
+
+        result_df.index.name = "DMU"
+
+        result_df.reset_index(inplace=True)
+
+        result_df.sort_values(
+            by=order,
+            ascending=(order == "DMU"), 
+            inplace=True,
+        )
+
+        columns = [
             {
-                "University": df.loc[i, "University"],
-                "phi": res["phi"],
-                "Congestion": res["s_c"][0],
-                "Extra Faculty Needed": res["s_plus_i2"][0],
-                "Citation Slack": res["s_plus_r"][0],
-                "Paper Slack": res["s_plus_r"][1],
-            }
+                "name": col, 
+                "id": col,
+            } 
+            for col in result_df.columns
+        ]
+
+        return (
+            columns, 
+            result_df.to_dict("records"),
+            result_df.to_dict("records"),
+            SUCCESS * bool(n_clicks),
         )
-
-    result_df = pd.DataFrame(results)
-
-    result_df["phi"] = (
-        result_df["phi"]
-            .astype(np.float64)
-    )
-
-    result_df["Congestion"] = (
-        result_df["Congestion"]
-            .astype(np.int32)
-    )
-
-    result_df["Extra Faculty Needed"] = (
-        result_df["Extra Faculty Needed"]
-            .astype(np.int32)
-    )
-
-    result_df["Citation Slack"] = (
-        result_df["Citation Slack"]
-            .astype(np.float64)
-            .round(2)
-    )
-
-    result_df["Paper Slack"] = (
-        result_df["Paper Slack"]
-            .astype(np.float64)
-            .round(2)
-    )
-
-    result_df["phi"] = (result_df["phi"].max() - result_df["phi"] + 1)
     
-    result_df["phi"] = (
-        MinMaxScaler().fit_transform(
-            result_df[["phi"]].to_numpy()
+    except Exception as e:
+        return (
+            dash.no_update, 
+            dash.no_update,
+            dash.no_update,
+            FAIL + f" {e}",
         )
-    )
-    
-    result_df["phi"] = result_df["phi"].round(2)
-
-    result_df.rename(
-        columns={
-            "phi": "Efficiency Score"
-        }, 
-        inplace=True,
-    )
-
-    result_df.index += 1
-
-    result_df.index.name = "DMU"
-
-    result_df.reset_index(inplace=True)
-
-    result_df.sort_values(
-        by=order,
-        ascending=(order == "DMU"), 
-        inplace=True,
-    )
-
-    columns = [
-        {
-            "name": col, 
-            "id": col,
-        } 
-        for col in result_df.columns
-    ]
-
-    return (
-        columns, 
-        result_df.to_dict("records"),
-        result_df.to_dict("records"),
-    )
 
 
 @app.callback(
@@ -556,14 +589,9 @@ def update_table_from_excel(contents, filename):
     _, content_string = contents.split(',')
     decoded = base64.b64decode(content_string)
 
-    try:
-        if filename.endswith(".xlsx"):
-            df_uploaded = pd.read_excel(io.BytesIO(decoded))
-        else:
-            return dash.no_update, dash.no_update
-        
-    except Exception as e:
-        print("Error reading file:", e)
+    if filename.endswith(".xlsx"):
+        df_uploaded = pd.read_excel(io.BytesIO(decoded))
+    else:
         return dash.no_update, dash.no_update
 
     return (
@@ -576,6 +604,20 @@ def update_table_from_excel(contents, filename):
             } 
             for col in df_uploaded.columns
         ]
+    )
+
+
+@app.callback(
+    Output("excel-input-download", "data"),
+    Input("download-input-btn", "n_clicks"),
+    State("input-table", "data"),
+    prevent_initial_call=True
+)
+def download_excel_input(_, data):
+    return dcc.send_data_frame(
+        pd.DataFrame(data).to_excel, 
+        "input_data.xlsx",
+        index=False,
     )
 
 
@@ -594,20 +636,6 @@ def update_uni_dropdown(_, table_data):
             for u in df["University"]
         ], 
         df["University"].to_list()
-    )
-
-
-@app.callback(
-    Output("excel-input-download", "data"),
-    Input("download-input-btn", "n_clicks"),
-    State("input-table", "data"),
-    prevent_initial_call=True
-)
-def download_excel_input(_, data):
-    return dcc.send_data_frame(
-        pd.DataFrame(data).to_excel, 
-        "input_data.xlsx",
-        index=False,
     )
 
 
@@ -776,20 +804,29 @@ def update_corr_heatmap(data):
 
 @app.callback(
     Output("excel-download", "data"),
+    Output("progress-status", "children", allow_duplicate=True),
     Input("download-excel-btn", "n_clicks"),
     State("dea-data", "data"),
     prevent_initial_call=True,
 )
 def download_excel(_, data):
-    return dcc.send_data_frame(
-        pd.DataFrame(data).to_excel, 
-        "dea_results.xlsx",
-        index=False,
-    )
+    try:
+        return (
+            dcc.send_data_frame(
+                pd.DataFrame(data).to_excel, 
+                "dea_results.xlsx",
+                index=False,
+            ), 
+            SUCCESS,
+        )
+    
+    except Exception as e:
+        return dash.no_update, FAIL + f" {e}"
 
 
 @app.callback(
     Output("report-download", "data"),
+    Output("progress-status", "children", allow_duplicate=True),
     Input("download-report-btn", "n_clicks"),
     State("input-table", "data"),
     State("stored-metric-figures", "data"),
@@ -806,39 +843,42 @@ def generate_pdf_report(
     corr_heatmap, 
     results_table
 ):
+    try:
+        buffer = io.BytesIO()
+        
+        doc = SimpleDocTemplate(buffer, pagesize=A3)
+        story = []
+        styles = getSampleStyleSheet()
+
+        story.append(Paragraph("DEA Input Congestion Report", styles['Title']))
+        story.append(Spacer(1, 40))
+
+        story.append(Paragraph("Input Table", styles['Heading2']))
+        story.append(Spacer(1, 20))
+        story.append(table_to_reportlab(input_table))
+        story.append(Spacer(1, 100))
+
+        story.append(Paragraph("Results Table", styles['Heading2']))
+        story.append(Spacer(1, 20))
+        story.append(table_to_reportlab(results_table))
+        story.append(Spacer(1, 12))
+
+        for fig_dict in metric_figures:
+            fig = go.Figure(fig_dict)
+            story.append(plot_to_image(fig))
+            story.append(Spacer(1, 6))
+
+        story.append(plot_to_image(parallel_coord))
+        story.append(plot_to_image(corr_heatmap))
+        story.append(Spacer(1, 12))
+
+        doc.build(story)
+        buffer.seek(0)
+
+        return dcc.send_bytes(buffer.read(), filename="dea_report.pdf"), SUCCESS
     
-    buffer = io.BytesIO()
-    
-    doc = SimpleDocTemplate(buffer, pagesize=A3)
-    story = []
-    styles = getSampleStyleSheet()
-
-    story.append(Paragraph("DEA Input Congestion Report", styles['Title']))
-    story.append(Spacer(1, 40))
-
-    story.append(Paragraph("Input Table", styles['Heading2']))
-    story.append(Spacer(1, 20))
-    story.append(table_to_reportlab(input_table))
-    story.append(Spacer(1, 100))
-
-    story.append(Paragraph("Results Table", styles['Heading2']))
-    story.append(Spacer(1, 20))
-    story.append(table_to_reportlab(results_table))
-    story.append(Spacer(1, 12))
-
-    for fig_dict in metric_figures:
-        fig = go.Figure(fig_dict)
-        story.append(plot_to_image(fig))
-        story.append(Spacer(1, 6))
-
-    story.append(plot_to_image(parallel_coord))
-    story.append(plot_to_image(corr_heatmap))
-    story.append(Spacer(1, 12))
-
-    doc.build(story)
-    buffer.seek(0)
-
-    return dcc.send_bytes(buffer.read(), filename="dea_report.pdf")
+    except Exception as e:
+        return dash.no_update, FAIL + f" {e}"
 
 
 def table_to_reportlab(data):

@@ -70,3 +70,24 @@
 .fancy-subheader:hover {
     background-position: right center;
 }
+
+
+.custom-spinner .dash-spinner {
+    position: static;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.custom-spinner .dash-spinner>div {
+    width: 20px;
+    height: 30px;
+    border: 6px solid #1c2b4d;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
