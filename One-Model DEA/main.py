@@ -1,4 +1,5 @@
 import io
+import time
 import base64
 from pathlib import Path
 
@@ -88,6 +89,32 @@ row_highlight_conditionals = [
 ]
 
 layout = html.Div([
+    dcc.Loading(
+        type="graph",
+        fullscreen=True,
+        children=html.Div([
+            html.Div(
+                id="initial-loading", 
+                style={
+                    "position": "fixed",
+                    "top": 0,
+                    "left": 0,
+                    "width": "100%",
+                    "height": "100%",
+                    "backgroundColor": "rgba(0, 0, 0, 0)",
+                    "color": "white",
+                    "fontSize": "32px",
+                    "display": "flex",
+                    "justifyContent": "center",
+                    "alignItems": "center",
+                    "zIndex": 9999
+                },
+            ),
+
+            dcc.Interval(id="hide-loader", interval=3000, n_intervals=0, max_intervals=1),
+        ]),
+    ),
+
     html.H1("One-Model DEA Input Congestion Dashboard", 
             style={
                 "textAlign": "center",
@@ -462,6 +489,20 @@ app = Dash(
 app.title = "One-Model DEA Input Congestion Dashboard"
 
 app.layout = layout
+
+
+@app.callback(
+    Output("initial-loading", "style"),
+    Input("hide-loader", "n_intervals")
+)
+def hide_loader(n):
+    if n > 0:
+        return {
+            "display": "none"
+        }
+    
+    time.sleep(3)
+    raise dash.exceptions.PreventUpdate
 
 
 @app.callback(
