@@ -1,8 +1,9 @@
-import base64
 import io
+import base64
 
 import numpy as np
 import pandas as pd
+from pathlib import Path
 
 import dash
 from dash import (
@@ -36,7 +37,10 @@ from reportlab.lib.pagesizes import A3
 from reportlab.lib import colors
 
 
-initial_df = pd.read_excel("input_data.xlsx")
+file_path = Path.absolute(Path("input_data.xlsx"))
+
+initial_df = pd.read_excel(file_path)
+
 
 DARKBLUE = "#1c2b4d"
 WHITE = "#ffffff"
@@ -49,6 +53,7 @@ SEQ_COLORS = px.colors.sequential.Turbo
 
 FONT = "Georgia"
 ANOTHER_FONT = "Courier New"
+
 
 table_style = {
     "overflowX": "auto",
@@ -77,6 +82,7 @@ row_highlight_conditionals = [
         "backgroundColor": RED_HIGHLIGHT,
     },
 ]
+
 
 app = Dash(
     __name__,
